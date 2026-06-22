@@ -1,0 +1,46 @@
+{
+  "name": "rabbitmesh",
+  "version": "0.1.0",
+  "description": "Production-ready RabbitMQ SDK for Node.js microservices with TypeScript support.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "docs": "typedoc"
+  },
+  "keywords": ["rabbitmq", "amqp", "microservices", "typescript", "queue", "messaging"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "amqplib": "0.10.4"
+  },
+  "devDependencies": {
+    "@types/amqplib": "0.10.5",
+    "@types/node": "22.15.29",
+    "@typescript-eslint/eslint-plugin": "8.33.1",
+    "@typescript-eslint/parser": "8.33.1",
+    "@vitest/coverage-v8": "3.2.3",
+    "eslint": "9.28.0",
+    "tsup": "8.5.0",
+    "typedoc": "0.28.4",
+    "typescript": "5.8.3",
+    "vitest": "3.2.3"
+  }
+}
