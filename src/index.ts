@@ -15,4 +15,5 @@ export {
   PublishError,
   SubscribeError,
   SerializationError,
+  RetryError,
 } from "./utils/errors.js";

@@ -1,35 +1,34 @@
 /**
- * Subscriber example — run with: npx tsx examples/subscriber.ts
- * Requires a RabbitMQ instance at amqp://localhost (e.g. via Docker:
- *   docker run -d -p 5672:5672 rabbitmq:3-alpine
+ * v0.2.0 validation subscriber.
+ * Run with: npx tsx examples/subscriber.ts
  */
 import { RabbitMesh } from "../src/index.js";
 
-interface OrderCreated {
-  orderId: string;
-  userId: number;
-  total: number;
-}
+const rabbit = new RabbitMesh({ url: "amqp://guest:guest@localhost:5672" });
 
-const rabbit = new RabbitMesh({
-  url: process.env.RABBITMQ_URL ?? "amqp://localhost",
-  reconnect: true,
-  reconnectInterval: 5_000,
-});
+let attempts = 0;
 
 async function main(): Promise<void> {
   await rabbit.connect();
 
-  process.stdout.write("Waiting for messages on order.created…\n");
-
-  await rabbit.subscribe<OrderCreated>({
-    queue: "order.created",
+  await rabbit.subscribe({
+    queue: "emails",
+    retries: 3,
+    retryDelay: 3000,
     handler: async (payload) => {
-      process.stdout.write(`Received order: ${JSON.stringify(payload)}\n`);
+      attempts++;
+      process.stdout.write(`\nAttempt ${attempts}\nPayload: ${JSON.stringify(payload)}\n`);
+
+      if (attempts < 3) {
+        throw new Error("Temporary Failure");
+      }
+
+      process.stdout.write("SUCCESS\n");
     },
   });
 
-  // Keep the process alive
+  process.stdout.write("Subscriber Running\n");
+
   process.on("SIGINT", async () => {
     await rabbit.disconnect();
     process.exit(0);

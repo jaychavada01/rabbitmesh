@@ -29,3 +29,16 @@ export class SerializationError extends Error {
     this.name = "SerializationError";
   }
 }
+
+/** Thrown when a message has exhausted all retry attempts. */
+export class RetryError extends Error {
+  constructor(
+    message: string,
+    public readonly queue: string,
+    public readonly retryCount: number,
+    cause?: unknown,
+  ) {
+    super(message, { cause });
+    this.name = "RetryError";
+  }
+}

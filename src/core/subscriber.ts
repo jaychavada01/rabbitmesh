@@ -1,53 +1,72 @@
 import { QUEUE_OPTIONS } from "../utils/constants.js";
-import { SerializationError, SubscribeError } from "../utils/errors.js";
+import { RetryHandler } from "../utils/retry-handler.js";
+import { SubscribeError } from "../utils/errors.js";
 import { Logger } from "../utils/logger.js";
 import type { ConnectionManager } from "./connection-manager.js";
 import type { SubscribeOptions } from "../interfaces/subscribe.interface.js";
 
 /**
  * Subscribes to RabbitMQ queues and dispatches messages to handlers.
- * Acks on success, nacks (no requeue) on handler or deserialization error.
+ * Supports RabbitMQ-native retry via a dedicated retry queue when `retries > 0`.
+ *
+ * STABILITY GUARANTEE: no exception ever escapes the AMQP consumer callback.
+ * All errors are caught, logged, and the consumer continues running.
  */
 export class Subscriber {
   private readonly log = new Logger("Subscriber");
 
   constructor(private readonly connectionManager: ConnectionManager) {}
 
-  /**
-   * Begin consuming `queue`, deserializing each message and calling `handler`.
-   * Creates the queue if it does not exist.
-   */
   async subscribe<T>(options: SubscribeOptions<T>): Promise<void> {
-    const { queue, handler } = options;
+    const { queue, handler, retries = 0, retryDelay = 5_000 } = options;
     const channel = this.connectionManager.getChannel();
 
     try {
       await channel.assertQueue(queue, QUEUE_OPTIONS);
 
-      await channel.consume(queue, async (msg) => {
-        if (!msg) return; // consumer cancelled by broker
+      let retryHandler: RetryHandler | null = null;
+      if (retries > 0) {
+        retryHandler = new RetryHandler({ queue, retries, retryDelay });
+        await retryHandler.assertRetryQueue(channel);
+      }
 
+      await channel.consume(queue, async (msg) => {
+        if (!msg) return;
+
+        // ── Deserialization ────────────────────────────────────────────────
         let payload: T;
         try {
           payload = JSON.parse(msg.content.toString()) as T;
         } catch (err) {
           this.log.error(`Deserialization failed for queue "${queue}"`, err);
           channel.nack(msg, false, false);
-          throw new SerializationError(`Failed to deserialize message from queue "${queue}"`, err);
+          return; // message rejected — consumer keeps running
         }
 
+        // ── Handler + retry ────────────────────────────────────────────────
         try {
           await handler(payload);
           channel.ack(msg);
         } catch (err) {
-          this.log.error(`Handler error for queue "${queue}"`, err);
-          channel.nack(msg, false, false);
+          this.log.error(`Message processing failed for queue "${queue}"`, err);
+          if (retryHandler) {
+            try {
+              retryHandler.handleFailure(channel, msg, err);
+            } catch (retryErr) {
+              // RetryError after exhaustion — already nacked inside handleFailure.
+              // Log and continue; the consumer must not crash.
+              this.log.error(`Message permanently failed on queue "${queue}"`, retryErr);
+            }
+          } else {
+            channel.nack(msg, false, false);
+          }
         }
       });
 
-      this.log.info(`Subscribed to "${queue}"`);
+      this.log.info(
+        `Subscribed to "${queue}"${retries > 0 ? ` with ${retries} retries` : ""}`,
+      );
     } catch (err) {
-      if (err instanceof SerializationError) throw err;
       throw new SubscribeError(`Failed to subscribe to queue "${queue}"`, err);
     }
   }
