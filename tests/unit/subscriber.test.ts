@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Subscriber } from "../../src/core/subscriber.js";
-import { SubscribeError, SerializationError } from "../../src/utils/errors.js";
+import { SubscribeError } from "../../src/utils/errors.js";
 import type { ConnectionManager } from "../../src/core/connection-manager.js";
 import type { ConsumeMessage } from "amqplib";
 
-// Capture the consume callback so tests can invoke it directly
 let consumeCallback: ((msg: ConsumeMessage | null) => Promise<void>) | null = null;
 
 const mockChannel = {
@@ -27,7 +26,7 @@ function makeMsg(body: unknown): ConsumeMessage {
   return {
     content: Buffer.from(JSON.stringify(body)),
     fields: {} as ConsumeMessage["fields"],
-    properties: {} as ConsumeMessage["properties"],
+    properties: { headers: {} } as ConsumeMessage["properties"],
   };
 }
 
@@ -57,17 +56,18 @@ describe("Subscriber", () => {
     expect(mockChannel.nack).not.toHaveBeenCalled();
   });
 
-  it("nacks and throws SerializationError on invalid JSON", async () => {
+  it("nacks and resolves (no throw) on invalid JSON", async () => {
     const handler = vi.fn();
     await subscriber.subscribe({ queue: "test", handler });
 
-    const badMsg = {
+    const badMsg: ConsumeMessage = {
       content: Buffer.from("not-json{{"),
       fields: {} as ConsumeMessage["fields"],
-      properties: {} as ConsumeMessage["properties"],
+      properties: { headers: {} } as ConsumeMessage["properties"],
     };
 
-    await expect(consumeCallback!(badMsg)).rejects.toThrow(SerializationError);
+    // Consumer callback must never throw — process stability
+    await expect(consumeCallback!(badMsg)).resolves.toBeUndefined();
     expect(mockChannel.nack).toHaveBeenCalledWith(badMsg, false, false);
     expect(handler).not.toHaveBeenCalled();
   });

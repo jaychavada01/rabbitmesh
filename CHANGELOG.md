@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-22
+
+### Added
+
+- RabbitMQ-native retry mechanism — survives consumer/container/server restarts
+- Dedicated `<queue>.retry` queue with `x-message-ttl` and dead-letter routing
+- `x-retry-count` header tracking — incremented on every retry attempt
+- Fixed-delay retry strategy (`backoffStrategy: "fixed"`)
+- `retries`, `retryDelay`, and `backoffStrategy` options on `SubscribeOptions`
+- `RetryError` — preserves original error, queue name, and retry count
+- Unit tests for `RetryHandler` (8 cases)
+- Integration tests for retry scenarios (9 cases)
+
 ## [0.1.0] - 2026-06-22
 
 ### Added
@@ -23,4 +36,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vitest test suite: 23 tests (unit + integration), amqplib fully mocked
 - GitHub Actions CI workflow
 
+[0.2.0]: https://github.com/your-org/rabbitmash/releases/tag/v0.2.0
 [0.1.0]: https://github.com/your-org/rabbitmash/releases/tag/v0.1.0
