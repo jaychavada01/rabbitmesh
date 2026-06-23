@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-23
+
+### Added
+
+- Dead Letter Queue (DLQ) support — exhausted messages are routed to a DLQ instead of being discarded
+- `DLQOptions` interface (`enabled`, `queueName`) on `SubscribeOptions`
+- `DLQHandler` class — asserts DLQ, publishes DLQ messages with metadata, never crashes consumer
+- DLQ message schema: `payload`, `error`, `retryCount`, `failedAt`, `originalQueue`
+- Custom DLQ queue names via `dlq.queueName` (default: `<queue>.dlq`)
+- Integration tests for DLQ (6 cases)
+- `DLQHandler` and `DLQOptions` exported from package root
+
 ## [0.2.0] - 2026-06-22
 
 ### Added

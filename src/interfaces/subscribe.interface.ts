@@ -1,4 +1,14 @@
 /**
+ * Dead Letter Queue configuration.
+ */
+export interface DLQOptions {
+  /** Enable DLQ routing for exhausted messages. Default: false */
+  enabled?: boolean;
+  /** Custom DLQ queue name. Default: `<queue>.dlq` */
+  queueName?: string;
+}
+
+/**
  * Options for subscribing to a queue.
  */
 export interface SubscribeOptions<T = unknown> {
@@ -12,4 +22,6 @@ export interface SubscribeOptions<T = unknown> {
   retryDelay?: number;
   /** Retry delay strategy. Only "fixed" is supported in v0.2.0. */
   backoffStrategy?: "fixed";
+  /** Dead Letter Queue options. When enabled, exhausted messages are moved to DLQ. */
+  dlq?: DLQOptions;
 }

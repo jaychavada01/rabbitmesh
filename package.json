@@ -1,6 +1,6 @@
 {
   "name": "rabbitmesh",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Production-ready RabbitMQ SDK for Node.js microservices with TypeScript support.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
