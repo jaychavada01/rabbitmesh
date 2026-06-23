@@ -16,6 +16,7 @@ rabbitmesh provides a clean, TypeScript-first API over `amqplib` so you can star
 - Publish to any queue — auto-creates durable, persistent queues
 - Subscribe with typed handlers — auto-creates queues, handles ack/nack
 - **RabbitMQ-native retry mechanism** — survives process and container restarts
+- **Dead Letter Queue (DLQ) support** — exhausted messages preserved with full metadata
 - Auto-reconnect with configurable interval and max attempts
 - Custom error hierarchy (`ConnectionError`, `PublishError`, `SubscribeError`, `SerializationError`, `RetryError`)
 - Full TypeScript generics on `publish<T>` and `subscribe<T>`
@@ -174,6 +175,98 @@ try {
 }
 ```
 
+## Dead Letter Queue (DLQ)
+
+When a message exhausts all retry attempts, it is moved to a Dead Letter Queue instead of being silently discarded. The consumer continues running after every DLQ routing.
+
+### Architecture
+
+```
+emails
+  ↓
+Consumer (throws)
+  ↓ retry attempt 1
+emails.retry ──TTL──► emails
+  ↓
+Consumer (throws)
+  ↓ retry attempt 2
+emails.retry ──TTL──► emails
+  ↓
+Consumer (throws)
+  ↓ retries exhausted
+emails.dlq
+```
+
+### Basic usage
+
+```ts
+await rabbit.subscribe({
+  queue: "emails",
+  retries: 3,
+  retryDelay: 5000,
+  dlq: { enabled: true },
+  handler: async (payload) => {
+    await sendEmail(payload);
+  },
+});
+```
+
+RabbitMesh automatically creates `emails`, `emails.retry`, and `emails.dlq`.
+
+### Custom DLQ name
+
+```ts
+await rabbit.subscribe({
+  queue: "emails",
+  retries: 3,
+  retryDelay: 5000,
+  dlq: { enabled: true, queueName: "emails.dead" },
+  handler,
+});
+```
+
+### Queue naming rules
+
+| Queue         | Default name    | Custom via              |
+| ------------- | --------------- | ----------------------- |
+| Main queue    | `emails`        | `queue`                 |
+| Retry queue   | `emails.retry`  | —                       |
+| Dead letter   | `emails.dlq`    | `dlq.queueName`         |
+
+### DLQ message schema
+
+Every message written to the DLQ includes:
+
+```json
+{
+  "payload": { "email": "user@example.com" },
+  "error": "SMTP timeout",
+  "retryCount": 3,
+  "failedAt": "2026-06-23T10:30:00.000Z",
+  "originalQueue": "emails"
+}
+```
+
+### DLQ disabled (v0.2.0 behavior)
+
+Omitting `dlq` or setting `dlq.enabled: false` preserves the original behavior — exhausted messages are nacked with no requeue.
+
+### Migration from v0.2.0
+
+No breaking changes. All existing `subscribe()` calls work without modification.
+
+To add DLQ support, add `dlq: { enabled: true }` to any subscription:
+
+```diff
+ await rabbit.subscribe({
+   queue: "emails",
+   retries: 3,
+   retryDelay: 5000,
++  dlq: { enabled: true },
+   handler,
+ });
+```
+
 ## Configuration
 
 | Option                  | Type      | Default  | Description                                    |
@@ -235,7 +328,7 @@ Throws `SubscribeError` on setup failure.
 | ------- | ------------------------------- |
 | v0.1.0  | Connection, Publisher, Subscriber, Auto-reconnect ✅ |
 | v0.2.0  | Retry mechanism ✅               |
-| v0.3.0  | Dead Letter Queue (DLQ)         |
+| v0.3.0  | Dead Letter Queue (DLQ) ✅       |
 | v0.4.0  | Delayed messages                |
 | v0.5.0  | Middleware system               |
 | v0.6.0  | Request/Reply (RPC)             |

@@ -1,10 +1,11 @@
 // Core
 export { RabbitMesh } from "./core/rabbitmesh.js";
+export { DLQHandler } from "./core/dlq-handler.js";
 
 // Interfaces
 export type { RabbitMeshConfig } from "./interfaces/config.interface.js";
 export type { PublishOptions } from "./interfaces/publish.interface.js";
-export type { SubscribeOptions } from "./interfaces/subscribe.interface.js";
+export type { SubscribeOptions, DLQOptions } from "./interfaces/subscribe.interface.js";
 
 // Types
 export type { LogLevel, ResolvedConfig } from "./types/index.js";
