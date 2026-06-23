@@ -1,5 +1,6 @@
 # rabbitmesh
 
+[![CI](https://github.com/jaychavada01/rabbitmesh/actions/workflows/ci.yml/badge.svg)](https://github.com/jaychavada01/rabbitmesh/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/rabbitmesh.svg)](https://www.npmjs.com/package/rabbitmesh)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -226,7 +227,7 @@ rabbitmesh is built for production workloads:
 - **Dead Letter Queues** ensure no message is silently discarded after repeated failures
 - **Consumer stability guarantee** — uncaught handler errors are caught and logged; the consumer loop never exits
 
----
+<!-- ---
 
 ## Contributing
 
@@ -237,7 +238,7 @@ rabbitmesh is built for production workloads:
 
 Run `npm run lint`, `npm test`, and `npm run build` before submitting.
 
----
+--- -->
 
 ## License
 
