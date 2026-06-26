@@ -5,19 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+---
 
-## [0.3.0] - 2026-06-23
+## [0.4.0] - 2026-06-26
 
 ### Added
 
-- Dead Letter Queue (DLQ) support — exhausted messages are routed to a DLQ instead of being discarded
-- `DLQOptions` interface (`enabled`, `queueName`) on `SubscribeOptions`
-- `DLQHandler` class — asserts DLQ, publishes DLQ messages with metadata, never crashes consumer
-- DLQ message schema: `payload`, `error`, `retryCount`, `failedAt`, `originalQueue`
-- Custom DLQ queue names via `dlq.queueName` (default: `<queue>.dlq`)
-- Integration tests for DLQ (6 cases)
-- `DLQHandler` and `DLQOptions` exported from package root
+* Delayed message publishing via `publish({ delay })` option
+* Automatic delay queue creation (`<queue>.delay.<ms>`) with TTL and dead-letter routing
+* `DelayHandler` — dedicated class for delay queue lifecycle and publish
+* `DelayError` — thrown for invalid delay values or delay queue failures
+* Delay queue reuse — asserts idempotently, no duplicate queues
+* Delay validation — rejects `delay <= 0`, `NaN`, and `Infinity` before touching RabbitMQ
+* Delayed messages work with retries and DLQ routing
+* Delayed messages survive RabbitMQ and consumer restarts (durable + persistent)
+* Integration tests covering all 8 delay scenarios
+* Unit tests for `DelayHandler` and updated `Publisher` tests
+
+### Compatibility
+
+* No breaking changes
+* Existing v0.3.0 implementations continue to work without modification
+
+---
+
+## [0.4.0] - 2026-06-26
+
+### Added
+
+* Dead Letter Queue (DLQ) support for permanently failed messages
+* `DLQOptions` interface with:
+
+  * `enabled`
+  * `queueName`
+* `DLQHandler` for managing DLQ queue creation and message routing
+* Custom DLQ queue names via `dlq.queueName`
+* DLQ message metadata:
+
+  * `payload`
+  * `error`
+  * `retryCount`
+  * `failedAt`
+  * `originalQueue`
+* Automatic routing of exhausted messages to DLQ
+* Integration tests covering:
+
+  * DLQ queue creation
+  * Message routing
+  * Metadata preservation
+  * Custom DLQ names
+  * Consumer stability
+  * Backward compatibility
+
+### Improved
+
+* Consumer stability after retry exhaustion
+* Failure visibility through structured DLQ payloads
+* Retry and DLQ workflow integration
+
+### Compatibility
+
+* No breaking changes
+* Existing v0.2.0 implementations continue to work without modification
+
+---
 
 ## [0.2.0] - 2026-06-22
 
@@ -36,17 +87,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `RabbitMesh` — main facade class with `connect()`, `disconnect()`, `publish()`, `subscribe()`
-- `ConnectionManager` — AMQP connection and channel lifecycle management
-- `Publisher` — JSON-serialized, persistent message publishing with auto queue assertion
-- `Subscriber` — JSON-deserialized message consumption with ack/nack handling
-- Auto-reconnect with configurable interval and max attempts
-- Custom errors: `ConnectionError`, `PublishError`, `SubscribeError`, `SerializationError`
-- Internal `Logger` utility (debug / info / warn / error, writes to stderr)
-- Full TypeScript strict-mode support with generics on `publish<T>` and `subscribe<T>`
-- ESM + CommonJS dual build via tsup
-- Vitest test suite: 23 tests (unit + integration), amqplib fully mocked
-- GitHub Actions CI workflow
+* `RabbitMesh` facade class
+* Connection management with auto reconnect
+* Message publishing with automatic queue creation
+* Message consumption with acknowledgment handling
+* Persistent messages
+* Durable queues
+* TypeScript-first API with generics
+* Custom error hierarchy:
 
-[0.2.0]: https://github.com/your-org/rabbitmash/releases/tag/v0.2.0
-[0.1.0]: https://github.com/your-org/rabbitmash/releases/tag/v0.1.0
+  * `ConnectionError`
+  * `PublishError`
+  * `SubscribeError`
+  * `SerializationError`
+* ESM and CommonJS builds
+* Vitest test suite
+* GitHub Actions CI pipeline
+
+---
+
+[0.3.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.3.0
+[0.2.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.2.0
+[0.4.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.4.0

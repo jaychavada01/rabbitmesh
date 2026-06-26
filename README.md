@@ -12,16 +12,18 @@ rabbitmesh provides a clean, TypeScript-first API over `amqplib` so you can star
 
 ## Features
 
-- Connect / disconnect lifecycle management
-- Publish to any queue — auto-creates durable, persistent queues
-- Subscribe with typed handlers — auto-creates queues, handles ack/nack
-- **RabbitMQ-native retry mechanism** — survives process and container restarts
-- **Dead Letter Queue (DLQ) support** — exhausted messages preserved with full metadata
-- Auto-reconnect with configurable interval and max attempts
-- Custom error hierarchy (`ConnectionError`, `PublishError`, `SubscribeError`, `SerializationError`, `RetryError`)
-- Full TypeScript generics on `publish<T>` and `subscribe<T>`
-- ESM + CommonJS dual build — works with any module system
-- Zero runtime dependencies beyond `amqplib`
+- Durable queues with persistent messages
+- Auto-reconnect with configurable interval and retry cap
+- RabbitMQ-native retry mechanism
+- Dead Letter Queue (DLQ) routing for exhausted messages
+- **Delayed message publishing** — schedule messages without manual RabbitMQ configuration
+- JSON serialization and deserialization
+- Typed payloads with generics
+- Consumer stability — exceptions never crash the consumer loop
+- ESM and CommonJS builds
+- Custom error types for precise error handling
+
+---
 
 ## Installation
 
@@ -269,72 +271,156 @@ To add DLQ support, add `dlq: { enabled: true }` to any subscription:
 
 ## Configuration
 
-| Option                  | Type      | Default  | Description                                    |
-| ----------------------- | --------- | -------- | ---------------------------------------------- |
-| `url`                   | `string`  | —        | AMQP connection URL (required)                 |
-| `reconnect`             | `boolean` | `true`   | Enable auto-reconnect on connection loss       |
-| `reconnectInterval`     | `number`  | `5000`   | Milliseconds between reconnect attempts        |
-| `reconnectMaxAttempts`  | `number`  | `0`      | Max reconnect attempts; `0` = unlimited        |
+### `new RabbitMesh(config)`
+
+| Option                 | Type      | Default | Description                                        |
+| ---------------------- | --------- | ------- | -------------------------------------------------- |
+| `url`                  | `string`  | —       | AMQP connection URL *(required)*                   |
+| `reconnect`            | `boolean` | `true`  | Automatically reconnect on connection loss         |
+| `reconnectInterval`    | `number`  | `5000`  | Milliseconds to wait between reconnect attempts    |
+| `reconnectMaxAttempts` | `number`  | `0`     | Max reconnect attempts. `0` = unlimited            |
+
+### `publish(options)`
+
+| Option    | Type     | Default     | Description                                            |
+| --------- | -------- | ----------- | ------------------------------------------------------ |
+| `queue`   | `string` | —           | Target queue name *(required)*                         |
+| `payload` | `T`      | —           | Message payload — JSON-serialized *(required)*         |
+| `delay`   | `number` | `undefined` | Milliseconds before delivery. Omit for immediate send  |
+
+### `subscribe(options)`
+
+| Option       | Type       | Default | Description                                    |
+| ------------ | ---------- | ------- | ---------------------------------------------- |
+| `queue`      | `string`   | —       | Queue name *(required)*                        |
+| `handler`    | `function` | —       | Async message handler *(required)*             |
+| `retries`    | `number`   | `0`     | Max retry attempts. `0` disables retries       |
+| `retryDelay` | `number`   | `5000`  | Milliseconds between retry attempts            |
+| `dlq.enabled`    | `boolean`  | `false` | Route exhausted messages to a DLQ          |
+| `dlq.queueName`  | `string`   | `<queue>.dlq` | Custom DLQ queue name                |
+
+---
+
+## Delayed Messages
+
+Publish a message now and have it delivered to the consumer after a specified delay. rabbitmesh automatically creates and manages the underlying delay infrastructure — no manual RabbitMQ configuration required.
 
 ```ts
-const rabbit = new RabbitMesh({
-  url: process.env.RABBITMQ_URL!,
-  reconnect: true,
-  reconnectInterval: 3_000,
-  reconnectMaxAttempts: 10,
+await rabbit.publish({
+  queue: "emails",
+  payload: { userId: 42 },
+  delay: 60000, // deliver after 60 seconds
 });
 ```
 
-## API Reference
+The `delay` value is in milliseconds and must be a finite positive integer greater than 0. Omitting `delay` (or leaving it undefined) publishes immediately — no change from v0.3.0.
 
-### `new RabbitMesh(config: RabbitMeshConfig)`
+### How it works
 
-Creates a new RabbitMesh instance. Does not connect until `connect()` is called.
+When `delay` is specified, rabbitmesh creates a dedicated delay queue named `<queue>.delay.<ms>` with a TTL equal to the delay value and dead-letter routing back to the original queue. Once the TTL expires, RabbitMQ automatically delivers the message to the consumer.
 
-### `rabbit.connect(): Promise<void>`
+```txt
+publish({ queue: "emails", delay: 60000 })
+    ↓
+emails.delay.60000   (TTL = 60000ms, durable, persistent)
+    ↓ TTL expires
+emails
+    ↓
+Consumer
+```
 
-Establishes the AMQP connection and opens a channel. Throws `ConnectionError` on failure.
+Delay queues are:
+- Created automatically on first use
+- Reused on subsequent publishes with the same queue and delay
+- Durable and persistent — messages survive RabbitMQ and consumer restarts
 
-### `rabbit.disconnect(): Promise<void>`
+### Multiple delays
 
-Gracefully closes the channel and connection. Suppresses reconnect scheduling.
+Each unique delay value maps to a distinct delay queue:
 
-### `rabbit.publish<T>(options: PublishOptions<T>): Promise<void>`
+```ts
+// Creates emails.delay.5000
+await rabbit.publish({ queue: "emails", payload: p1, delay: 5000 });
 
-Asserts a durable queue then sends a persistent, JSON-serialized message.  
-Throws `SerializationError` if payload cannot be serialized.  
-Throws `PublishError` on any other publish failure.
+// Creates emails.delay.60000
+await rabbit.publish({ queue: "emails", payload: p2, delay: 60000 });
+```
 
-### `rabbit.subscribe<T>(options: SubscribeOptions<T>): Promise<void>`
+### Delay with retries and DLQ
 
-Asserts a durable queue and begins consuming. Deserializes each message and calls `handler`.  
-When `retries > 0`, also asserts a `<queue>.retry` queue for RabbitMQ-native retries.  
-Acks on success. On failure, routes to the retry queue (if retries remain) or nacks and throws `RetryError` (if exhausted).  
-Throws `SubscribeError` on setup failure.
+Delayed messages pass through the normal consumer path after delivery, so retries and DLQ routing work exactly as they do for immediate messages:
 
-### Errors
+```ts
+await rabbit.subscribe({
+  queue: "emails",
+  retries: 3,
+  retryDelay: 5000,
+  dlq: { enabled: true },
+  handler: async (payload) => {
+    await sendEmail(payload);
+  },
+});
 
-| Class                | Thrown when                                            |
+// This message will be delivered after 2 minutes, then retried up to 3 times on failure
+await rabbit.publish({
+  queue: "emails",
+  payload: { to: "user@example.com" },
+  delay: 120000,
+});
+```
+
+---
+
+## Error Handling
+
+rabbitmesh exports typed errors for every failure mode.
+
+```ts
+import {
+  ConnectionError,
+  PublishError,
+  SubscribeError,
+  SerializationError,
+  RetryError,
+  DelayError,
+} from "rabbitmesh";
+```
+
+| Error                | When it is thrown                                      |
 | -------------------- | ------------------------------------------------------ |
-| `ConnectionError`    | Connection cannot be established or is lost            |
-| `PublishError`       | `publish()` fails for any reason                       |
-| `SubscribeError`     | `subscribe()` setup fails                              |
-| `SerializationError` | JSON serialize/deserialize fails                       |
-| `RetryError`         | Message exhausts all retry attempts                    |
+| `ConnectionError`    | Connection cannot be established or is unexpectedly lost |
+| `PublishError`       | A `publish()` call fails                               |
+| `SubscribeError`     | A `subscribe()` call fails during setup                |
+| `SerializationError` | Payload cannot be serialized or deserialized as JSON   |
+| `RetryError`         | A message exhausts all configured retry attempts       |
+| `DelayError`         | `delay` is invalid, or delay queue setup/publish fails |
 
-## Roadmap
+`RetryError` carries `queue`, `retryCount`, and `cause` for programmatic handling.
 
-| Version | Features                        |
-| ------- | ------------------------------- |
-| v0.1.0  | Connection, Publisher, Subscriber, Auto-reconnect ✅ |
-| v0.2.0  | Retry mechanism ✅               |
-| v0.3.0  | Dead Letter Queue (DLQ) ✅       |
-| v0.4.0  | Delayed messages                |
-| v0.5.0  | Middleware system               |
-| v0.6.0  | Request/Reply (RPC)             |
-| v0.7.0  | Metrics & monitoring            |
-| v0.8.0  | OpenTelemetry support           |
-| v1.0.0  | Stable production release       |
+---
+
+## Use Cases
+
+- **Microservices** — decouple services with reliable async messaging
+- **Event-driven systems** — publish domain events and fan out to multiple consumers
+- **Background jobs** — process tasks out-of-band with retry and failure handling
+- **Notification systems** — deliver emails, push notifications, and webhooks reliably
+- **Payment workflows** — ensure critical messages are never silently dropped
+- **Queue-based pipelines** — build multi-stage processing with guaranteed delivery
+
+---
+
+## Production Readiness
+
+rabbitmesh is built for production workloads:
+
+- **Durable queues and persistent messages** survive broker restarts
+- **Auto-reconnect** keeps consumers alive through transient network failures
+- **RabbitMQ-native retries** survive application and container restarts — no in-process state
+- **Dead Letter Queues** ensure no message is silently discarded after repeated failures
+- **Consumer stability guarantee** — uncaught handler errors are caught and logged; the consumer loop never exits
+
+<!-- ---
 
 ## Contributing
 
