@@ -1,14 +1,24 @@
 # rabbitmesh
 
-Production-ready RabbitMQ SDK for Node.js microservices with TypeScript support.
-
-[![CI](https://github.com/your-org/rabbitmash/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/rabbitmash/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/rabbitmash.svg)](https://www.npmjs.com/package/rabbitmash)
+[![CI](https://github.com/jaychavada01/rabbitmesh/actions/workflows/ci.yml/badge.svg)](https://github.com/jaychavada01/rabbitmesh/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/rabbitmesh.svg)](https://www.npmjs.com/package/rabbitmesh)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Overview
+A production-ready RabbitMQ client for Node.js and TypeScript. rabbitmesh handles connection management, message publishing and consuming, retries, and dead-letter queues — so you can focus on your application logic.
 
-rabbitmesh provides a clean, TypeScript-first API over `amqplib` so you can start publishing and consuming RabbitMQ messages without boilerplate. It handles connection management, auto-reconnect, JSON serialization, message acknowledgment, and RabbitMQ-native retries out of the box.
+---
+
+## Why rabbitmesh?
+
+Working directly with `amqplib` means writing the same boilerplate every time: connection handling, channel setup, reconnect logic, JSON serialization, queue assertions, retry queues, dead-letter routing. rabbitmesh packages all of that into a clean, typed API.
+
+- **No boilerplate** — queues are auto-created on first use
+- **No lost messages** — persistent delivery and durable queues by default
+- **No manual reconnect** — automatic reconnection built in
+- **No silent failures** — exhausted messages are routed to a DLQ, not discarded
+- **Full TypeScript support** — generics on every publish and subscribe call
+
+---
 
 ## Features
 
@@ -33,6 +43,8 @@ npm install rabbitmesh
 
 Requires Node.js ≥ 20 and a running RabbitMQ instance.
 
+---
+
 ## Quick Start
 
 ```ts
@@ -42,28 +54,27 @@ const rabbit = new RabbitMesh({ url: "amqp://localhost" });
 
 await rabbit.connect();
 
-// Publish
 await rabbit.publish({
-  queue: "notifications",
-  payload: { userId: 1, message: "Welcome!" },
+  queue: "orders",
+  payload: { orderId: "ord-001", total: 49.99 },
 });
 
-// Subscribe
 await rabbit.subscribe({
-  queue: "notifications",
+  queue: "orders",
   handler: async (payload) => {
-    console.log(payload);
+    console.log("Received:", payload);
   },
 });
 
-// Graceful shutdown
 process.on("SIGINT", async () => {
   await rabbit.disconnect();
   process.exit(0);
 });
 ```
 
-## Publisher Example
+---
+
+## Publishing Messages
 
 ```ts
 interface OrderCreated {
@@ -72,12 +83,16 @@ interface OrderCreated {
 }
 
 await rabbit.publish<OrderCreated>({
-  queue: "order.created",
+  queue: "orders",
   payload: { orderId: "ord-001", total: 49.99 },
 });
 ```
 
-## Subscriber Example
+The queue is created automatically if it does not exist. All messages are sent as durable and persistent.
+
+---
+
+## Consuming Messages
 
 ```ts
 interface OrderCreated {
@@ -86,120 +101,39 @@ interface OrderCreated {
 }
 
 await rabbit.subscribe<OrderCreated>({
-  queue: "order.created",
+  queue: "orders",
   handler: async ({ orderId, total }) => {
-    console.log(`Processing order ${orderId} for $${total}`);
+    await processOrder(orderId, total);
   },
 });
 ```
 
-## Retry Mechanism
+Messages are acknowledged on success. If the handler throws, the message is nacked.
 
-RabbitMesh supports RabbitMQ-native retries via a dedicated retry queue. Retries survive consumer crashes, application restarts, container restarts, and server restarts — no in-process timers or counters are used.
+---
 
-### Basic usage
+## Retries
+
+Pass `retries` and `retryDelay` to automatically retry failed messages before giving up.
 
 ```ts
 await rabbit.subscribe({
   queue: "emails",
   retries: 3,
-  retryDelay: 5000,
+  retryDelay: 5000, // ms between retries
   handler: async (payload) => {
     await sendEmail(payload);
   },
 });
 ```
 
-When `retries > 0`, RabbitMesh automatically creates an `emails.retry` queue and wires all retry routing.
+On failure, the message is re-queued and redelivered after `retryDelay` milliseconds. After all attempts are exhausted the message is nacked. Retry state survives consumer restarts.
 
-### Retry flow
+---
 
-**Success path:**
-```
-Main Queue → Consumer → ACK
-```
+## Dead Letter Queues
 
-**Failure path (retries remaining):**
-```
-Main Queue → Consumer (throws) → emails.retry (waits retryDelay ms) → Main Queue → Consumer
-```
-
-**Failure path (max retries reached):**
-```
-Main Queue → Consumer (throws) → NACK (no requeue) → rejected
-```
-
-### Retry queue naming
-
-For a queue named `emails`, the retry queue is automatically named `emails.retry`.
-
-The retry queue is configured with:
-
-```js
-{
-  "x-message-ttl": retryDelay,          // wait before returning to main queue
-  "x-dead-letter-exchange": "",          // default exchange
-  "x-dead-letter-routing-key": "emails"  // return to main queue after TTL
-}
-```
-
-### Retry headers
-
-The current retry count is stored in the message header `x-retry-count` and incremented on every retry attempt:
-
-```js
-headers: { "x-retry-count": 2 }
-```
-
-### Subscribe options for retry
-
-| Option            | Type               | Default | Description                                   |
-| ----------------- | ------------------ | ------- | --------------------------------------------- |
-| `retries`         | `number`           | `0`     | Max retry attempts. `0` disables retries.     |
-| `retryDelay`      | `number`           | `5000`  | Milliseconds to wait before each retry.       |
-| `backoffStrategy` | `"fixed"`          | —       | Delay strategy. Only `"fixed"` in v0.2.0.     |
-
-### RetryError
-
-When all retries are exhausted, a `RetryError` is thrown with the following shape:
-
-```ts
-import { RetryError } from "rabbitmesh";
-
-try {
-  // ...
-} catch (err) {
-  if (err instanceof RetryError) {
-    console.log(err.queue);       // "emails"
-    console.log(err.retryCount);  // 3
-    console.log(err.cause);       // original error
-  }
-}
-```
-
-## Dead Letter Queue (DLQ)
-
-When a message exhausts all retry attempts, it is moved to a Dead Letter Queue instead of being silently discarded. The consumer continues running after every DLQ routing.
-
-### Architecture
-
-```
-emails
-  ↓
-Consumer (throws)
-  ↓ retry attempt 1
-emails.retry ──TTL──► emails
-  ↓
-Consumer (throws)
-  ↓ retry attempt 2
-emails.retry ──TTL──► emails
-  ↓
-Consumer (throws)
-  ↓ retries exhausted
-emails.dlq
-```
-
-### Basic usage
+Enable DLQ routing to preserve messages that exhaust all retry attempts.
 
 ```ts
 await rabbit.subscribe({
@@ -213,63 +147,41 @@ await rabbit.subscribe({
 });
 ```
 
-RabbitMesh automatically creates `emails`, `emails.retry`, and `emails.dlq`.
+Exhausted messages are moved to `emails.dlq` and include the original payload, error message, retry count, timestamp, and source queue — ready for inspection or replay.
 
-### Custom DLQ name
+Use a custom DLQ name if needed:
 
 ```ts
-await rabbit.subscribe({
-  queue: "emails",
-  retries: 3,
-  retryDelay: 5000,
-  dlq: { enabled: true, queueName: "emails.dead" },
-  handler,
-});
+dlq: { enabled: true, queueName: "emails.failed" }
 ```
 
-### Queue naming rules
-
-| Queue         | Default name    | Custom via              |
-| ------------- | --------------- | ----------------------- |
-| Main queue    | `emails`        | `queue`                 |
-| Retry queue   | `emails.retry`  | —                       |
-| Dead letter   | `emails.dlq`    | `dlq.queueName`         |
-
-### DLQ message schema
-
-Every message written to the DLQ includes:
-
-```json
-{
-  "payload": { "email": "user@example.com" },
-  "error": "SMTP timeout",
-  "retryCount": 3,
-  "failedAt": "2026-06-23T10:30:00.000Z",
-  "originalQueue": "emails"
-}
-```
-
-### DLQ disabled (v0.2.0 behavior)
-
-Omitting `dlq` or setting `dlq.enabled: false` preserves the original behavior — exhausted messages are nacked with no requeue.
-
-### Migration from v0.2.0
-
-No breaking changes. All existing `subscribe()` calls work without modification.
-
-To add DLQ support, add `dlq: { enabled: true }` to any subscription:
-
-```diff
- await rabbit.subscribe({
-   queue: "emails",
-   retries: 3,
-   retryDelay: 5000,
-+  dlq: { enabled: true },
-   handler,
- });
-```
+---
 
 ## Configuration
+
+### `new RabbitMesh(config)`
+
+| Option                 | Type      | Default | Description                                        |
+| ---------------------- | --------- | ------- | -------------------------------------------------- |
+| `url`                  | `string`  | —       | AMQP connection URL *(required)*                   |
+| `reconnect`            | `boolean` | `true`  | Automatically reconnect on connection loss         |
+| `reconnectInterval`    | `number`  | `5000`  | Milliseconds to wait between reconnect attempts    |
+| `reconnectMaxAttempts` | `number`  | `0`     | Max reconnect attempts. `0` = unlimited            |
+
+### `subscribe(options)`
+
+| Option       | Type       | Default | Description                                    |
+| ------------ | ---------- | ------- | ---------------------------------------------- |
+| `queue`      | `string`   | —       | Queue name *(required)*                        |
+| `handler`    | `function` | —       | Async message handler *(required)*             |
+| `retries`    | `number`   | `0`     | Max retry attempts. `0` disables retries       |
+| `retryDelay` | `number`   | `5000`  | Milliseconds between retry attempts            |
+| `dlq.enabled`    | `boolean`  | `false` | Route exhausted messages to a DLQ          |
+| `dlq.queueName`  | `string`   | `<queue>.dlq` | Custom DLQ queue name                |
+
+---
+
+## Error Handling
 
 ### `new RabbitMesh(config)`
 
@@ -426,10 +338,12 @@ rabbitmesh is built for production workloads:
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feat/my-feature`
-3. Commit your changes following [Conventional Commits](https://www.conventionalcommits.org)
+3. Commit following [Conventional Commits](https://www.conventionalcommits.org)
 4. Open a pull request
 
-Please ensure `npm run lint`, `npm test`, and `npm run build` all pass before submitting.
+Run `npm run lint`, `npm test`, and `npm run build` before submitting.
+
+--- -->
 
 ## License
 
