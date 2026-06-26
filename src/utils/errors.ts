@@ -42,3 +42,11 @@ export class RetryError extends Error {
     this.name = "RetryError";
   }
 }
+
+/** Thrown when delayed message setup or publishing fails, or an invalid delay is supplied. */
+export class DelayError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
+    this.name = "DelayError";
+  }
+}

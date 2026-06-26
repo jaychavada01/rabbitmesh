@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.3.0] - 2026-06-23
+## [0.4.0] - 2026-06-26
+
+### Added
+
+* Delayed message publishing via `publish({ delay })` option
+* Automatic delay queue creation (`<queue>.delay.<ms>`) with TTL and dead-letter routing
+* `DelayHandler` — dedicated class for delay queue lifecycle and publish
+* `DelayError` — thrown for invalid delay values or delay queue failures
+* Delay queue reuse — asserts idempotently, no duplicate queues
+* Delay validation — rejects `delay <= 0`, `NaN`, and `Infinity` before touching RabbitMQ
+* Delayed messages work with retries and DLQ routing
+* Delayed messages survive RabbitMQ and consumer restarts (durable + persistent)
+* Integration tests covering all 8 delay scenarios
+* Unit tests for `DelayHandler` and updated `Publisher` tests
+
+### Compatibility
+
+* No breaking changes
+* Existing v0.3.0 implementations continue to work without modification
+
+---
+
+## [0.4.0] - 2026-06-26
 
 ### Added
 
@@ -95,3 +117,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [0.3.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.3.0
 [0.2.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.2.0
+[0.4.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.4.0

@@ -26,6 +26,7 @@ Working directly with `amqplib` means writing the same boilerplate every time: c
 - Auto-reconnect with configurable interval and retry cap
 - RabbitMQ-native retry mechanism
 - Dead Letter Queue (DLQ) routing for exhausted messages
+- **Delayed message publishing** — schedule messages without manual RabbitMQ configuration
 - JSON serialization and deserialization
 - Typed payloads with generics
 - Consumer stability — exceptions never crash the consumer loop
@@ -182,6 +183,108 @@ dlq: { enabled: true, queueName: "emails.failed" }
 
 ## Error Handling
 
+### `new RabbitMesh(config)`
+
+| Option                 | Type      | Default | Description                                        |
+| ---------------------- | --------- | ------- | -------------------------------------------------- |
+| `url`                  | `string`  | —       | AMQP connection URL *(required)*                   |
+| `reconnect`            | `boolean` | `true`  | Automatically reconnect on connection loss         |
+| `reconnectInterval`    | `number`  | `5000`  | Milliseconds to wait between reconnect attempts    |
+| `reconnectMaxAttempts` | `number`  | `0`     | Max reconnect attempts. `0` = unlimited            |
+
+### `publish(options)`
+
+| Option    | Type     | Default     | Description                                            |
+| --------- | -------- | ----------- | ------------------------------------------------------ |
+| `queue`   | `string` | —           | Target queue name *(required)*                         |
+| `payload` | `T`      | —           | Message payload — JSON-serialized *(required)*         |
+| `delay`   | `number` | `undefined` | Milliseconds before delivery. Omit for immediate send  |
+
+### `subscribe(options)`
+
+| Option       | Type       | Default | Description                                    |
+| ------------ | ---------- | ------- | ---------------------------------------------- |
+| `queue`      | `string`   | —       | Queue name *(required)*                        |
+| `handler`    | `function` | —       | Async message handler *(required)*             |
+| `retries`    | `number`   | `0`     | Max retry attempts. `0` disables retries       |
+| `retryDelay` | `number`   | `5000`  | Milliseconds between retry attempts            |
+| `dlq.enabled`    | `boolean`  | `false` | Route exhausted messages to a DLQ          |
+| `dlq.queueName`  | `string`   | `<queue>.dlq` | Custom DLQ queue name                |
+
+---
+
+## Delayed Messages
+
+Publish a message now and have it delivered to the consumer after a specified delay. rabbitmesh automatically creates and manages the underlying delay infrastructure — no manual RabbitMQ configuration required.
+
+```ts
+await rabbit.publish({
+  queue: "emails",
+  payload: { userId: 42 },
+  delay: 60000, // deliver after 60 seconds
+});
+```
+
+The `delay` value is in milliseconds and must be a finite positive integer greater than 0. Omitting `delay` (or leaving it undefined) publishes immediately — no change from v0.3.0.
+
+### How it works
+
+When `delay` is specified, rabbitmesh creates a dedicated delay queue named `<queue>.delay.<ms>` with a TTL equal to the delay value and dead-letter routing back to the original queue. Once the TTL expires, RabbitMQ automatically delivers the message to the consumer.
+
+```txt
+publish({ queue: "emails", delay: 60000 })
+    ↓
+emails.delay.60000   (TTL = 60000ms, durable, persistent)
+    ↓ TTL expires
+emails
+    ↓
+Consumer
+```
+
+Delay queues are:
+- Created automatically on first use
+- Reused on subsequent publishes with the same queue and delay
+- Durable and persistent — messages survive RabbitMQ and consumer restarts
+
+### Multiple delays
+
+Each unique delay value maps to a distinct delay queue:
+
+```ts
+// Creates emails.delay.5000
+await rabbit.publish({ queue: "emails", payload: p1, delay: 5000 });
+
+// Creates emails.delay.60000
+await rabbit.publish({ queue: "emails", payload: p2, delay: 60000 });
+```
+
+### Delay with retries and DLQ
+
+Delayed messages pass through the normal consumer path after delivery, so retries and DLQ routing work exactly as they do for immediate messages:
+
+```ts
+await rabbit.subscribe({
+  queue: "emails",
+  retries: 3,
+  retryDelay: 5000,
+  dlq: { enabled: true },
+  handler: async (payload) => {
+    await sendEmail(payload);
+  },
+});
+
+// This message will be delivered after 2 minutes, then retried up to 3 times on failure
+await rabbit.publish({
+  queue: "emails",
+  payload: { to: "user@example.com" },
+  delay: 120000,
+});
+```
+
+---
+
+## Error Handling
+
 rabbitmesh exports typed errors for every failure mode.
 
 ```ts
@@ -191,6 +294,7 @@ import {
   SubscribeError,
   SerializationError,
   RetryError,
+  DelayError,
 } from "rabbitmesh";
 ```
 
@@ -201,6 +305,7 @@ import {
 | `SubscribeError`     | A `subscribe()` call fails during setup                |
 | `SerializationError` | Payload cannot be serialized or deserialized as JSON   |
 | `RetryError`         | A message exhausts all configured retry attempts       |
+| `DelayError`         | `delay` is invalid, or delay queue setup/publish fails |
 
 `RetryError` carries `queue`, `retryCount`, and `cause` for programmatic handling.
 
