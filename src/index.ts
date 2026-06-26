@@ -1,6 +1,7 @@
 // Core
 export { RabbitMesh } from "./core/rabbitmesh.js";
 export { DLQHandler } from "./core/dlq-handler.js";
+export { DelayHandler } from "./core/delay-handler.js";
 
 // Interfaces
 export type { RabbitMeshConfig } from "./interfaces/config.interface.js";
@@ -17,4 +18,5 @@ export {
   SubscribeError,
   SerializationError,
   RetryError,
+  DelayError,
 } from "./utils/errors.js";
