@@ -50,3 +50,19 @@ export class DelayError extends Error {
     this.name = "DelayError";
   }
 }
+
+/** Thrown when exchange assertion, binding, or publish to exchange fails. */
+export class ExchangeError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
+    this.name = "ExchangeError";
+  }
+}
+
+/** Thrown when PublishOptions or SubscribeOptions contain invalid combinations. */
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
