@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2026-06-26
+
+### Added
+
+* Direct Exchange support — route messages to one queue by routing key
+* Fanout Exchange support — broadcast messages to all bound queues
+* Topic Exchange support — route messages using wildcard patterns (`*`, `#`)
+* Automatic exchange creation on first use (durable)
+* Automatic queue binding — no manual RabbitMQ configuration required
+* `ExchangeManager` — single-responsibility class for exchange assertion
+* `BindingManager` — single-responsibility class for queue assertion and binding
+* `ExchangeType` — exported union type `"direct" | "fanout" | "topic"`
+* `ExchangeError` — thrown when exchange assertion, binding, or exchange publish fails
+* `ValidationError` — thrown for invalid option combinations before any RabbitMQ operation
+* `exchange`, `exchangeType`, `routingKey` options on `publish()`
+* `exchange`, `exchangeType`, `routingKey` options on `subscribe()`
+* Delayed publish to exchange — delay queue dead-letters to target exchange with routing key preserved
+* Exchange + Retry integration — retry queues work transparently with exchange-bound queues
+* Exchange + DLQ integration — DLQ routing works transparently with exchange-bound queues
+* Integration tests covering 8 scenarios: Direct, Fanout, Topic, Multiple routing keys, Retry, DLQ, Delay, Reconnect
+* Unit tests for ExchangeManager, BindingManager, validation, ExchangeError, ValidationError
+
+### Compatibility
+
+* No breaking changes
+* Existing v0.4.0 queue-based publish and subscribe continue to work without modification
+
+---
+
 ## [0.4.0] - 2026-06-26
 
 ### Added
@@ -115,6 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.5.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.5.0
+[0.4.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.4.0
 [0.3.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.3.0
 [0.2.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.2.0
-[0.4.0]: https://github.com/jaychavada01/rabbitmesh/releases/tag/v0.4.0
